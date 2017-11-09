@@ -3,6 +3,9 @@ import org.opencv.imgproc.*;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.calib3d.*;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 
 public class Main {
@@ -28,8 +31,15 @@ public class Main {
         MatOfPoint3f objectPoints = new MatOfPoint3f(
                 new Point3(2.064, 3.4925, 0.0),
                 new Point3(-2.064, 3.4925, 0.0),
-                new Point3(-2.064, -3.4925, 0.0),
-                new Point3(2.064, -3.4925, 0.0));
+                new Point3(2.064, -3.4925, 0.0),
+                new Point3(-2.064, -3.4925, 0.0)
+                );
+
+        MatOfPoint3f linePoints = new MatOfPoint3f(
+                new Point3(0, 0, 0),
+                new Point3(2, 0, 0),
+                new Point3(0, 2, 0),
+                new Point3(0, 0, 2));
 
         // Start the usb camera with the index n
         VideoCapture camera = new VideoCapture(0);
@@ -49,18 +59,35 @@ public class Main {
 
             Imgproc.drawContours(frame, quads, -1, new Scalar(0, 0, 255), 3);
 
-            window.updateImage(Util.matToBufferedImage(frame, null));
-
             // TODO: solve for the position of ALL rectangles in image
             if (quads.size()>=1) {
-                MatOfPoint2f imagePoints = new MatOfPoint2f(quads.get(0).toArray());
-                // TODO: figure out which rectangle points correspond to which points on image
+                for (MatOfPoint quad : quads) {
 
-                Mat rvec = new Mat();
-                Mat tvec = new Mat();
-                Calib3d.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec);
+                    List<Point> quadVert = new ArrayList<>();
+                    for (Point point : quad.toArray()) {
+                        quadVert.add(point);
+                    }
+                    quadVert.sort((lhs, rhs) -> (int) (lhs.y - rhs.y));
+                    if (quadVert.get(3).x>quadVert.get(2).x) {
+                        quadVert.add(2,quadVert.remove(3));
+                    }
+                    if (quadVert.get(1).x>quadVert.get(0).x) {
+                        quadVert.add(0,quadVert.remove(1));
+                    }
 
+                    Mat rvec = new Mat();
+                    Mat tvec = new Mat();
+                    Calib3d.solvePnP(objectPoints, new MatOfPoint2f(quadVert.toArray(new Point[quadVert.size()])), cameraMatrix, distCoeffs, rvec, tvec, false, Calib3d.CV_ITERATIVE);
+//                    System.out.println("[" + tvec.get(0, 0)[0] + ", " + tvec.get(1, 0)[0] + ", " + tvec.get(2, 0)[0] + "]");
+
+                    MatOfPoint2f linePoints2d = new MatOfPoint2f();
+                    Calib3d.projectPoints(linePoints, rvec, tvec, cameraMatrix, distCoeffs, linePoints2d);
+                    Imgproc.line(frame, linePoints2d.toArray()[0], linePoints2d.toArray()[1], new Scalar(0, 0, 255), 1);
+                    Imgproc.line(frame, linePoints2d.toArray()[0], linePoints2d.toArray()[2], new Scalar(255, 0, 0), 1);
+                    Imgproc.line(frame, linePoints2d.toArray()[0], linePoints2d.toArray()[3], new Scalar(0, 255, 0), 1);
+                }
             }
+            window.updateImage(Util.matToBufferedImage(frame, null));
         }
 //        camera.release();
         // TODO: figure out how to release the camera when the window is closed
